@@ -1,0 +1,27 @@
+13:celkem bodu za projekt
+#-- automaticke hodnoceni -----------------------------
+= make
+:ok:make
+= prepare tests: resources
+:kontrola syntaxe vystupu => check_syntax.out
+= base_* : zakladni testy
+:ok:test_a_base_counter: navratovy kod je 0
+1:ok:test_a_base_counter
+2:ok:test_b_base_bus: posloupnost BUS ok
+2:ok:test_c_base_rider: posloupnost RID ok
+2:ok:test_d_base_sync: synchronizace
+= testy s ruznym nastavenim parametru
+:test_h_sync: zakladni posloupnost (viz 2-sync1.log): chyba v synchronizaci
+0:fail:test_h_sync: synchronizace
+3:ok:test_l_sync_sleep: synchronizace
+= test spravneho ukonceni pri chybe
+1:ok:test_o_error_1: osetreni chybneho vstupu
+= resources
+1:ok: pocet procesu ok (5, mel by byt 5)
+: chybny pocet volani wait (waitpid) (3, mel by byt 5)
+1:ok: pripojeni ke sdilene pameti a uvolneni je korektni
+: pocet volani shmat a shmdt se lisi
+1:ok: korektni uvolneni pojmenovane semafory
+#------------------------------------------------------
+14:celkove score (max pro hodnoceni 16)
+13:celkem bodu za projekt
