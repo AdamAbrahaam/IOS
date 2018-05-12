@@ -1,0 +1,207 @@
+#### Autor: Adam Abrahám ####
+#!/bin/sh
+
+argERR="Nespravny argument !"
+fileERR="Nenasiel sa editovany subor !"
+filesERR="Nenasli sa subory !"
+
+export POSSIXLY_CORRECT=yes
+
+####-Check, set editor-####
+checkEditor(){
+    if [ -z "$EDITOR" ]; then
+        if [ -z "$VISUAL" ]; then
+            EDTR='vi'
+        else 
+            EDTR="$VISUAL"
+        fi
+    else
+        EDTR="$EDITOR"
+    fi
+}
+
+####-Check realpath-####
+checkRealPath() {
+    RLPTH=$(realpath .)
+
+    if [ -z "$RLPTH" ]; then
+        echo "Utilita realpath neni dostupna." >&2
+        exit 1
+    fi
+}
+
+####-Check WEDI_RC-####
+checkWediRC() {
+    if [ -z "$WEDI_RC" ]; then
+        echo "Chyba: premenna WEDI_RC je prazdna." >&2
+        exit 1
+    elif ! [ -f "$WEDI_RC" ]; then
+        mkdir -p "$(dirname "$WEDI_RC")"
+        touch "$WEDI_RC"
+    fi
+}
+
+####--####
+chooseLast() {
+    last=$(grep "$1"'$' "$WEDI_RC" | tail -n1 | grep -Po '(?<=(FILE: )).*(?= //)')
+    if [ -z "$last" ]; then
+        echo "$fileERR" >&2
+        exit 1
+    else
+        save "$1" "$last"
+    fi
+}
+
+###--####
+mostFrequent() {
+    MFILE=$(grep "$1"'$' "$WEDI_RC" | grep -Po '(?<=(FILE: )).*(?= //)' | sort | uniq -c | sort -r | head -n1 | awk '{print $2}')
+    if [ -z "$MFILE" ]; then
+        echo "$fileERR" >&2
+        exit 1
+    else
+        save "$1" "$MFILE"
+    fi
+}
+
+####--####
+printEdited() {
+    EDTD=$(grep "$1"'$' "$WEDI_RC" | grep -Po '(?<=(FILE: )).*(?= //)' | sort | uniq)
+    checkFile "$EDTD" "$1"
+}
+
+####--####
+abDate() {
+    # 1. argument -> -b | -a    2. argument -> datum    3. argument -> adresa
+    checkDate "$2"
+    DATE=$(echo "$2" | tr -d -)
+    LINES=$(grep "$3"'$' "$WEDI_RC" | sort | uniq)
+    IFS=$'\n'
+
+    if [ "$1" = "-b" ]; then
+        for i in $LINES; do
+            lineTime=$(echo "$i" | cut -c7-16 | tr -d -)
+            if [ "$lineTime" -lt "$DATE" ]; then
+                FILES+=`echo "$i" | grep -Po '(?<=(FILE: )).*(?= //)'`
+                FILES+=$'\n'
+            fi
+        done
+
+    elif [ "$1" = "-a" ]; then
+        for i in $LINES; do
+            lineTime=$(echo "$i" | cut -c7-16 | tr -d -)
+            if [ "$lineTime" -ge "$DATE" ]; then
+                FILES+=`echo "$i" | grep -Po '(?<=(FILE: )).*(?= //)'`
+                FILES+=$'\n'
+            fi
+        done
+    fi
+
+    if [ -z "$FILES" ]; then
+        echo "$filesERR" >&2
+    else
+        FILES=$(echo "$FILES" | sort | uniq)
+        checkFile "$FILES" "$3"
+    fi
+
+}
+
+####--####
+checkFile() {
+    for i in $1; do 
+        FILE="$2"/"$i"
+        if [ -f "$FILE" ]; then
+            lFILES="$lFILES $i"
+        fi
+    done
+    echo "$lFILES"
+}
+
+####--####
+checkDate() {
+    DATE=$(echo "$1" | grep -x '[0123456789]\{4\}\-[0123456789]\{2\}\-[0123456789]\{2\}')
+    if [ -z "$DATE" ]; then
+        echo "Datum je v nespravnom formate" >&2
+        exit 1
+    fi
+}
+
+####--####
+save() {
+    FILE="$2"
+    PTH="$1"
+    TIME=$(date +"%Y-%m-%d")
+
+    echo DATE: "$TIME" // FILE: "$FILE" // PATH: "$PTH" >> "$WEDI_RC" 
+    $EDTR "$PTH"/"$FILE"
+}
+
+####-MAIN-####
+# Nastavenie premennej EDTR
+checkEditor
+
+# Overenie utility realpath
+checkRealPath
+
+# Overenie premennej WEDI_RC
+checkWediRC
+
+# Bez argumentu -> do PTH sa ulozi aktualny adresar
+if [ "$#" -eq 0 ]; then
+    PTH=$(realpath .)
+    chooseLast "$PTH"
+
+# 1 argument
+elif [ "$#" -eq 1 ]; then
+    # Ked je argument file -> editovat
+    if [ -f "$1" ]; then
+        PTH=$(echo "$1" | sed 's/\(^.*\)\/\(.*\)/\1/')
+        FILE=$(echo "$1" | sed 's/\(^.*\)\/\(.*\)/\2/')
+        
+        if [ "$PTH" = "$FILE" ]; then
+            save $(realpath .) "$FILE"
+        else
+            save $(realpath $PTH) "$FILE"
+        fi
+
+    # ked je argument adresar -> naposledy editovany subor
+    elif [ -d "$1" ]; then
+        PTH=$(realpath "$1")
+        chooseLast "$PTH"
+
+    # ked je argument -m -> vyberie sa najcastejsie editovany subor
+    elif [ "$1" = "-m" ]; then
+        mostFrequent $(realpath .)
+
+    # ked je argument -l -> zobrazi zoznam editovanych suborov
+    elif [ "$1" = "-l" ];then
+        printEdited $(realpath .)
+
+    # ked subor neexistuje
+    else
+        echo "$fileERR" >&2
+    fi
+
+# 2 argumenty
+elif [ "$#" -eq 2 ]; then
+    if [ "$1" = "-m" ] && [ -d "$2" ]; then
+        mostFrequent $(realpath "$2")
+
+    elif [ "$1" = "-l" ] && [ -d "$2" ]; then
+        printEdited $(realpath "$2")
+
+    elif [ "$1" = "-a" ] || [ "$1" = "-b" ];then
+        abDate "$1" "$2" $(realpath .)
+    else
+        echo "$argERR" >&2
+    fi
+
+# 3 argumenty
+elif [ "$#" -eq 3 ]; then
+    if [ "$1" = "-a" ] || [ "$1" = "-b" ];then
+        abDate "$1" "$2" $(realpath $3)
+    else
+        echo "$argERR" >&2
+    fi
+else
+    echo "$argERR" >&2
+fi 
